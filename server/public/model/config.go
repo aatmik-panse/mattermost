@@ -1091,6 +1091,66 @@ func (s *ClusterSettings) SetDefaults() {
 	}
 }
 
+type RedisSettings struct {
+	Enable              *bool   `access:"environment_high_availability,write_restrictable,cloud_restrictable"`
+	EnableRedisCluster  *bool   `access:"environment_high_availability,write_restrictable,cloud_restrictable"`
+	Address             *string `access:"environment_high_availability,write_restrictable,cloud_restrictable"` // telemetry: none
+	Password            *string `access:"environment_high_availability,write_restrictable,cloud_restrictable"` // telemetry: none
+	PoolSize            *int    `access:"environment_high_availability,write_restrictable,cloud_restrictable"`
+	PoolTimeoutSeconds  *int    `access:"environment_high_availability,write_restrictable,cloud_restrictable"`
+	IdleTimeoutSeconds  *int    `access:"environment_high_availability,write_restrictable,cloud_restrictable"`
+	Index               *int    `access:"environment_high_availability,write_restrictable,cloud_restrictable"`
+	ConnectTimeoutMs    *int    `access:"environment_high_availability,write_restrictable,cloud_restrictable"`
+	ReadTimeoutMs       *int    `access:"environment_high_availability,write_restrictable,cloud_restrictable"`
+	WriteTimeoutMs      *int    `access:"environment_high_availability,write_restrictable,cloud_restrictable"`
+}
+
+func (s *RedisSettings) SetDefaults() {
+	if s.Enable == nil {
+		s.Enable = NewPointer(false)
+	}
+
+	if s.EnableRedisCluster == nil {
+		s.EnableRedisCluster = NewPointer(false)
+	}
+
+	if s.Address == nil || *s.Address == "" {
+		s.Address = NewPointer("localhost:6379")
+	}
+
+	if s.Password == nil {
+		s.Password = NewPointer("")
+	}
+
+	if s.PoolSize == nil {
+		s.PoolSize = NewPointer(10)
+	}
+
+	if s.PoolTimeoutSeconds == nil {
+		s.PoolTimeoutSeconds = NewPointer(30)
+	}
+
+	if s.IdleTimeoutSeconds == nil {
+		s.IdleTimeoutSeconds = NewPointer(300)
+	}
+
+	if s.Index == nil {
+		s.Index = NewPointer(0)
+	}
+
+	if s.ConnectTimeoutMs == nil {
+		s.ConnectTimeoutMs = NewPointer(2000)
+	}
+
+	if s.ReadTimeoutMs == nil {
+		s.ReadTimeoutMs = NewPointer(2000)
+	}
+
+	if s.WriteTimeoutMs == nil {
+		s.WriteTimeoutMs = NewPointer(2000)
+	}
+}
+
 type MetricsSettings struct {
 	Enable                    *bool    `access:"environment_performance_monitoring,write_restrictable,cloud_restrictable"`
 	BlockProfileRate          *int     `access:"environment_performance_monitoring,write_restrictable,cloud_restrictable"`
@@ -3766,6 +3826,7 @@ type Config struct {
 	WranglerSettings            WranglerSettings
 	ConnectedWorkspacesSettings ConnectedWorkspacesSettings
 	AccessControlSettings       AccessControlSettings
+	RedisSettings               RedisSettings
 }
 
 func (o *Config) Auditable() map[string]any {
@@ -3875,6 +3936,7 @@ func (o *Config) SetDefaults() {
 	o.GuestAccountsSettings.SetDefaults()
 	o.ImageProxySettings.SetDefaults()
 	o.CloudSettings.SetDefaults()
+	o.RedisSettings.SetDefaults()
 	if o.FeatureFlags == nil {
 		o.FeatureFlags = &FeatureFlags{}
 		o.FeatureFlags.SetDefaults()
