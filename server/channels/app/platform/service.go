@@ -314,7 +314,7 @@ func New(sc ServiceConfig, options ...Option) (*PlatformService, error) {
 	// where license cannot be loaded before store, and store cannot be loaded before
 	// cache. So loading license before loading cache is an uphill battle.
 	if (license == nil || !*license.Features.Cluster) && *cacheConfig.CacheType == model.CacheTypeRedis && !ps.forceEnableRedis {
-		return nil, fmt.Errorf("Redis cannot be used in an instance without a license or a license without clustering")
+		return nil, fmt.Errorf("redis cannot be used in an instance without a license or a license without clustering")
 	}
 
 	// Step 9: Initialize filestore

@@ -4,6 +4,7 @@
 package platform
 
 import (
+	"encoding/json"
 	"fmt"
 	"hash/maphash"
 	"runtime"
@@ -16,6 +17,10 @@ import (
 	"github.com/mattermost/mattermost/server/public/shared/mlog"
 	"github.com/mattermost/mattermost/server/public/shared/request"
 	"github.com/mattermost/mattermost/server/v8/channels/store"
+
+	"context"
+
+	"github.com/redis/go-redis/v9"
 )
 
 const (
@@ -85,6 +90,7 @@ type Hub struct {
 	checkConn       chan *webConnCheckMessage
 	connCount       chan *webConnCountMessage
 	broadcastHooks  map[string]BroadcastHook
+	redisClient     *redis.Client
 }
 
 // newWebHub creates a new Hub.
@@ -119,6 +125,14 @@ func (ps *PlatformService) hubStart(broadcastHooks map[string]BroadcastHook) {
 		hubs[i] = newWebHub(ps)
 		hubs[i].connectionIndex = i
 		hubs[i].broadcastHooks = broadcastHooks
+		if ps.Config().RedisSettings.Enable != nil && *ps.Config().RedisSettings.Enable {
+        hubs[i].redisClient = redis.NewClient(&redis.Options{
+			Addr:     *ps.Config().RedisSettings.Address,
+            DB:       *ps.Config().RedisSettings.Index,
+            PoolSize: *ps.Config().RedisSettings.PoolSize,
+        })
+        go clusterSubscribe(hubs[i].redisClient, hubs[i])
+    }
 		hubs[i].Start()
 	}
 	// Assigning to the hubs slice without any mutex is fine because it is only assigned once
@@ -138,6 +152,22 @@ func (ps *PlatformService) HubStop() {
 		hub.Stop()
 	}
 }
+
+func clusterSubscribe(rdb *redis.Client, h *Hub) {
+    pubsub := rdb.PSubscribe(context.Background(), "mattermost_ws_*")
+    defer pubsub.Close()
+
+    for msg := range pubsub.Channel() {
+        var event model.WebSocketEvent
+        if err := json.Unmarshal([]byte(msg.Payload), &event); err != nil {
+            h.platform.Log().Error("clusterSubscribe: unmarshal error", mlog.Err(err))
+            continue
+        }
+        // re-inject into this hub for local clients
+		h.broadcastLocally(&event)
+    }
+}
+
 
 // GetHubForUserId returns the hub for a given user id.
 func (ps *PlatformService) GetHubForUserId(userID string) *Hub {
@@ -467,6 +497,14 @@ func (h *Hub) SendMessage(conn *WebConn, msg model.WebSocketMessage) {
 	}
 }
 
+// broadcastLocally broadcasts the event to all local connections in the hub.
+func (h *Hub) broadcastLocally(event *model.WebSocketEvent) {
+	select {
+	case h.broadcast <- event:
+	case <-h.stop:
+	}
+}
+
 // Stop stops the hub.
 func (h *Hub) Stop() {
 	close(h.stop)
@@ -641,6 +679,15 @@ func (h *Hub) Start() {
 			case msg := <-h.broadcast:
 				if metrics := h.platform.metricsIFace; metrics != nil {
 					metrics.DecrementWebSocketBroadcastBufferSize(strconv.Itoa(h.connectionIndex), 1)
+				}
+
+				if h.redisClient != nil {
+					if payload, err := json.Marshal(msg); err != nil {
+						h.platform.Log().Error("hub.go: marshal for Redis failed", mlog.Err(err))
+					} else {
+						channel := fmt.Sprintf("mattermost_ws_%s", msg.GetBroadcast().ChannelId)
+						h.redisClient.Publish(context.Background(), channel, payload)
+					}
 				}
 
 				// Remove the broadcast hook information before precomputing the JSON so that those aren't included in it
